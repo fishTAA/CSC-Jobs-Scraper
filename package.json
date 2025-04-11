@@ -1,0 +1,27 @@
+{
+  "name": "gov-vacancies-ts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx ts-node index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.14.0"
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "dotenv": "^16.4.7",
+    "playwright": "^1.51.1",
+    "playwright-core": "^1.51.1",
+    "undici-types": "^6.21.0"
+  },
+  "description": ""
+}
