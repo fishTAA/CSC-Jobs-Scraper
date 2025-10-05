@@ -1,15 +1,15 @@
 import { chromium, Page } from "playwright";
 import dotenv from "dotenv";
 import { jobs, FacebookPagePostResponse } from "./models";
-import { getLatestJob, insertJob } from "./db";
-import { ok } from "assert";
+import { deleteAllJobs, getLatestJob, insertJob } from "./db";
+
 dotenv.config();
 
 async function scrape_CSC_W_CHECK() {
   const lastposted: jobs | null = getLatestJob(); // Get the latest posted job
   console.log("latest jobid" + lastposted?.jobid, lastposted?.position);
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
   let jobs;
@@ -24,7 +24,7 @@ async function scrape_CSC_W_CHECK() {
   console.log("Navigating to CSC Career site...");
   await page.goto("https://csc.gov.ph/career/", { waitUntil: "networkidle" });
 
-  await page.setViewportSize({ width: 1280, height: 1024 });
+  // await page.setViewportSize({ width: 1280, height: 1024 });
 
   await page.waitForSelector('select[name="region"]');
 
@@ -157,51 +157,50 @@ async function facbookPagePost(jobs: jobs[]) {
   if (!process.env.FB_ACCESSTOKEN || !process.env.PAGE_ID) {
     throw new Error("Missing API_URL or API_TOKEN in .env");
   }
-  const labelWidth = 15;
-  const padding = " ".repeat(10);
-  if (jobs.length == 1) {
-    console.log("No new jobs");
-    return;
-  }
+
+  const padding = " ".repeat(12);
+
   const message = jobs
     .map((job, index) => {
+      const paddingstart = index === 0 ? " ".repeat(12) : "";
       return `
-            ${padding}${String(index + 1).padEnd(labelWidth)}
-            ${padding}${job.agency} \nis hiring!
-            ${padding}${"Position:".padEnd(labelWidth)}\n${job.position}
-            ${padding}${"Region:".padEnd(labelWidth)}${job.region}
-            ${padding}${"Posting date:".padEnd(labelWidth)}${job.posting_date}
-            ${padding}${"Closing date:".padEnd(labelWidth)}${job.closing_date}
-            ${padding}${"Link:".padEnd(labelWidth)}${job.job_link}
-            `;
+        \n-----------------------\n
+        ${String(index + 1)}.
+        ${job.agency} \n${padding}is hiring!
+        ${"Position:"}\n${padding}${job.position}
+        ${"Region:"}${job.region}
+        ${"Posting date:"}${job.posting_date}
+        ${"Closing date:"}${job.closing_date}
+        ${"Link:"}${job.job_link}
+      `;
     })
-    .join(`\n${padding}-----------------------\n`);
+    .join();
 
   const data = {
-    message: message,
-    access_token: process.env.FB_ACCESSTOKEN, // Ensure this is a Page access token
+    message,
+    access_token: process.env.FB_ACCESSTOKEN,
   };
 
-  const options = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  };
-  fetch(`https://graph.facebook.com/v22.0/${process.env.PAGE_ID}/feed`, options)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then((data) => {
-      console.log("Success:", data);
-      insertJob(jobs[0]);
-      return data;
-    })
-    .catch((error) => console.error("Error:", error));
+  const response = await fetch(
+    `https://graph.facebook.com/v22.0/${process.env.PAGE_ID}/feed`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Facebook API error: ${response.status} - ${await response.text()}`
+    );
+  }
+
+  const result = await response.json();
+  console.log("Success:", result);
+  return result;
 }
 
 async function main() {
@@ -224,7 +223,7 @@ async function main() {
     let isFirstPostSuccessful = false; // Flag to track if the first post was successful
 
     // Now handle the jobs in batches
-    const batchSize = 100;
+    const batchSize = 150;
     for (let i = 0; i < jobs.length; i += batchSize) {
       const batch = jobs.slice(i, i + batchSize);
       console.log(
@@ -235,6 +234,8 @@ async function main() {
       try {
         await facbookPagePost(batch); // Wait for Facebook post to finish
         if (!isFirstPostSuccessful) {
+          deleteAllJobs(); // Clear the table only before inserting the first job
+          console.log("Database cleared before inserting the first job.");
           // If the first post has been successfully made, insert the first job
           insertJob(firstJob);
           console.log("First job inserted into the database.");
@@ -251,3 +252,43 @@ async function main() {
   }
 }
 main();
+
+async function test() {
+  const jobs: jobs[] = await scrape_CSC_W_CHECK();
+  console.log(jobs);
+}
+
+// test();
+
+
+async function jobScreenShot() {
+  const browser = await chromium.launch({ headless: false });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await page.setExtraHTTPHeaders({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+  });
+
+  console.log("Navigating to CSC Career site...");
+  await page.goto("https://csc.gov.ph/career/", { waitUntil: "networkidle" });
+
+  // Listen for new page if there's a redirect to a new tab
+  const [newPage] = await Promise.all([
+    context.waitForEvent('page'), // Waits for new tab
+    page.click('button[id="info_4429004"]'), // Trigger action that could open new tab
+  ]);
+
+  await newPage.waitForLoadState('networkidle');
+  await newPage.waitForTimeout(2000);
+  await newPage.screenshot({ path: 'screenshot.png' });
+
+  await browser.close();
+}
+
+
+
+
+

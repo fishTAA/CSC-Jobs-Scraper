@@ -58,3 +58,12 @@ export function getLatestJob(): jobs | null {
     return null;
   }
 }
+
+export function deleteAllJobs() {
+
+// delete all rows
+db.prepare('DELETE FROM POSTREFERENCE').run();
+
+console.log('All rows deleted from users table.');
+}
+
