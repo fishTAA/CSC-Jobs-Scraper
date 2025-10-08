@@ -6,7 +6,7 @@ import { deleteAllJobs, getLatestJob, insertJob } from "./db";
 dotenv.config();
 
 async function scrape_CSC_W_CHECK() {
-  const lastposted: jobs | null = getLatestJob(); // Get the latest posted job
+  const lastposted: jobs | null = await getLatestJob(); // Get the latest posted job
   console.log("latest jobid" + lastposted?.jobid, lastposted?.position);
 
   const browser = await chromium.launch({ headless: true });
@@ -234,10 +234,10 @@ async function main() {
       try {
         await facbookPagePost(batch); // Wait for Facebook post to finish
         if (!isFirstPostSuccessful) {
-          deleteAllJobs(); // Clear the table only before inserting the first job
+         await deleteAllJobs(); // Clear the table only before inserting the first job
           console.log("Database cleared before inserting the first job.");
           // If the first post has been successfully made, insert the first job
-          insertJob(firstJob);
+          await insertJob(firstJob);
           console.log("First job inserted into the database.");
           isFirstPostSuccessful = true; // Set the flag to true after successful insertion
         }

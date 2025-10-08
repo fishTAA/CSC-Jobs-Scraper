@@ -1,69 +1,82 @@
-import Database from "better-sqlite3";
+import { createClient } from "@supabase/supabase-js";
 import { jobs } from "./models";
+import dotenv from "dotenv";
+dotenv.config();
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
 
-const db = new Database("cscjobs.db");
+/**
+ * Note: In Supabase, tables are created using SQL inside the dashboard
+ * or using the SQL Editor — not via runtime JS code.
+ * 
+ * Equivalent table schema:
+ * 
+ * CREATE TABLE IF NOT EXISTS POSTREFERENCE (
+ *   id SERIAL PRIMARY KEY,
+ *   agency TEXT,
+ *   region TEXT,
+ *   position TEXT,
+ *   item_no TEXT,
+ *   posting_date TEXT,
+ *   closing_date TEXT,
+ *   jobid TEXT UNIQUE,
+ *   job_link TEXT
+ * );
+ */
 
-export function createdb() {
-  const query = `CREATE TABLE IF NOT EXISTS POSTREFERENCE (
-    id INTEGER PRIMARY KEY,
-    agency TEXT,
-    region TEXT,
-    position TEXT,
-    item_no TEXT,
-    posting_date TEXT,
-    closing_date TEXT,
-    jobid TEXT,
-    job_link TEXT
-  )`;
-
-  db.exec(query);
-}
-
-export function insertJob(job: jobs) {
-  const query = `
-    INSERT OR IGNORE INTO POSTREFERENCE (
-        agency, region, position, item_no, posting_date, closing_date, jobid, job_link) VALUES (?,?,?,?,?,?,?,?)
+export async function insertJob(job: jobs) {
+  const { data, error } = await supabase
+    .from("postreference")
+    .insert([{
+      agency: job.agency,
+      region: job.region,
+      position: job.position,
+      item_no: job.item_no,
+      posting_date: job.posting_date,
+      closing_date: job.closing_date,
+      jobid: job.jobid,
+      job_link: job.job_link
+    }])
+    .select(); // optional, returns inserted row(s)
     
-    `;
-  const stmt = db.prepare(query);
-
-  stmt.run(
-    job.agency,
-    job.region,
-    job.position,
-    job.item_no,
-    job.posting_date,
-    job.closing_date,
-    job.jobid,
-    job.job_link
-  );
-  console.log("Job inserted successfully.");
+  if (error) {
+    console.error("Insert failed:", error.message);
+  } else {
+    console.log("Job inserted successfully:", data);
+  }
 }
 
-export function getLatestJob(): jobs | null {
-  const latestJob = db
-    .prepare(
-      `SELECT agency, region, position, item_no, posting_date, closing_date, jobid, job_link 
-       FROM POSTREFERENCE 
-       ORDER BY ROWID DESC 
-       LIMIT 1`
-    )
-    .get() as jobs | undefined;
+export async function getLatestJob(): Promise<jobs | null> {
+  const { data, error } = await supabase
+    .from("postreference")
+    .select("*")
+    .order("id", { ascending: false })
+    .limit(1)
+    .single();
 
-  if (latestJob) {
-    console.log("Latest job ID:", latestJob.jobid);
-    return latestJob;
+  if (error && error.code !== "PGRST116") { // PGRST116 means no rows
+    console.error("Failed to fetch latest job:", error.message);
+    return null;
+  }
+
+  if (data) {
+    console.log("Latest job ID:", data.jobid);
+    return data as jobs;
   } else {
     console.log("No jobs found.");
     return null;
   }
 }
 
-export function deleteAllJobs() {
+export async function deleteAllJobs() {
+  const { error } = await supabase.from("postreference").delete().neq("id", 0);
 
-// delete all rows
-db.prepare('DELETE FROM POSTREFERENCE').run();
-
-console.log('All rows deleted from users table.');
+  if (error) {
+    console.error("Failed to delete all jobs:", error.message);
+  } else {
+    console.log("All rows deleted from POSTREFERENCE table.");
+  }
 }
-
